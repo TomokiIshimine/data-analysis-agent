@@ -1,5 +1,8 @@
 # Claude Code local settings (per-user)
 .claude/settings.local.json
 
+# Workflow working directories (ephemeral; may contain copies of analysis data)
+tasks/
+
 # OS / editor
 .DS_Store
