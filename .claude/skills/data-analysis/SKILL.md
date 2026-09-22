@@ -44,7 +44,7 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 - 設計係の 2 モード（`draft` / `revise`）の責務と入出力
 - 設計係が `AskUserQuestion` を呼ばないこと、決められない論点を推奨値で埋めること
-- 承認ゲートの手順（要約セクションの限定 Read → メッセージ提示 → `AskUserQuestion` 1 通で `承認` / `修正要望あり` → 修正要望時は自由記述 1 件を取得して revise 再起動 → 反復上限なし）
+- 承認ゲートの手順
 - revise で本文と要約セクションを同一実行内で同期させること
 
 本ワークフロー固有の差分（要約セクションの実体が `<section id="design-summary">` であること、承認時に取り出す値、承認後のデータソース再解決の分岐）は Step 3 に記載する。
@@ -68,14 +68,12 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 | パス | 内容 | 生成主体 |
 |---|---|---|
-| `<workdir>/data/manifest.md` | データソース台帳。所在・取得方法・SHA-256・サイズ・件数・スキーマ・取得日時・機密区分。**データの所在に関する唯一の情報源** | `data-ingestion-profiler` |
-| `<workdir>/data/raw/` | 元データのコピー。非機密かつ小容量（既定 100 MB 未満）のローカルファイルに限る | `data-ingestion-profiler` |
-| `<workdir>/data/snapshot/` | 再取得で内容が変わりうる非機密ソース（DB クエリ・API）の決定的スナップショット | `data-ingestion-profiler` |
+| `<workdir>/data/manifest.md` | データソース台帳。**データの所在に関する唯一の情報源** | `data-ingestion-profiler` |
 | `<workdir>/01_data-profile.md` | データプロファイル（`## データソース` に `RESOLVED` / `UNRESOLVED`、列・型・欠損・分布・期間・異常値） | `data-ingestion-profiler` |
 | `<workdir>/02_analysis-requirements.html` | 分析要件シート。分析要件の唯一の情報源 | `analysis-requirements-designer` |
 | `<workdir>/03_iterations/<n>_plan.md` | 第 `n` 周の分析プラン | `analysis-planner` |
 | `<workdir>/03_iterations/<n>_execution.md` | 第 `n` 周の実行ログ（ハッシュ照合結果・コード全文・出力・図表参照） | `analysis-executor` |
-| `<workdir>/03_iterations/<n>_evaluation.md` | 第 `n` 周の評価（`## 判定` ＋ 逸脱点検 ＋ 次周フィードバック） | `analysis-evaluator` |
+| `<workdir>/03_iterations/<n>_evaluation.md` | 第 `n` 周の評価（`## 判定`（分析ループ群のみに対する判定）＋ 完了条件の充足状況 ＋ 逸脱点検 ＋ `## レポート工程への引き継ぎ事項` ＋ 次周フィードバック） | `analysis-evaluator` |
 | `<workdir>/04_analysis-report.md` | 再現可能レポート（Markdown） | `analysis-report-author` |
 | `<workdir>/05_reproduction/<m>_verification.md` | 第 `m` 周の再現検証レポート（`## 判定` を含む） | `reproduction-verifier` |
 | `<workdir>/06_analysis-report.html` | 清書レポート（単一ファイル HTML） | `analysis-report-stylist` |
@@ -94,7 +92,7 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 - 番号接頭辞は成果物の生成順に一致させる（Step 1 は成果物を持たないため、Step 2 の成果物が `01_` から始まる）。反復する生成物のみサブディレクトリ（`03_iterations/` / `05_reproduction/` / `runs/`）に束ねる。
 - `data/` は番号を持たない。特定 Step の成果物ではなく、Step 2 以降の全工程が参照する台帳だからである。
 - 中間生成物はすべて `tasks/` 配下に閉じる。`src/` や `docs/` を汚さない。
-- 元データは既定では複製しない。複製・スナップショットを作る条件は `analysis-data-handling` が定める。
+- 元データは既定では複製しない。複製・スナップショットを作る条件と、`<workdir>/data/` 配下の内部構成（台帳以外の複製・スナップショットをどの名前でどこに置くか）は **How スキル `analysis-data-handling` が唯一の情報源として定める**。メインは `data-dir` と `manifest-output-path` の絶対パスを渡すだけで、配下の内部構成には介入しない。
 
 ## 実行手順
 
@@ -102,7 +100,9 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 `analysis-workdir-initializer` を起動する。
 
-- **引数**: `workflow-name`: `data-analysis`
+- **引数**:
+  - `workflow-name`: `data-analysis`
+  - `subdirs`: 作成する骨格サブディレクトリの相対名を改行区切りで列挙したもの。本ワークフローでは `data` / `03_iterations` / `05_reproduction` / `runs` の 4 つ。
 - **期待する戻り値**: 作成された作業ディレクトリの絶対パス 1 行。これを `<workdir>` として保持する。
 - 以降のすべてのパスは `<workdir>` を基点に組み立て、絶対パスでサブエージェントに渡す。
 
@@ -111,11 +111,14 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 `data-ingestion-profiler` を起動する。
 
 - **引数**:
+  - `target-project-root`: `<target-project-root>`
   - `analysis-request`: スキル起動時の引数全文（空でもそのまま渡す）
   - `data-dir`: `<workdir>/data`
+  - `manifest-output-path`: `<workdir>/data/manifest.md`
   - `profile-output-path`: `<workdir>/01_data-profile.md`
   - `run-dir`: `<workdir>/runs/profile`
 - **期待する戻り値**: `<workdir>/01_data-profile.md` の絶対パス 1 行。
+- `analysis-request` にプロジェクトルート相対のパス（`datasets/foo/bar.csv` 等）が含まれる場合、`data-ingestion-profiler` は `target-project-root` を基点としてそれを解決する。メインは基点を補足する自然文を `analysis-request` に付け足さない——基点は引数で渡すものであり、自然文で補うと係ごとに解釈が割れるため。
 - **データソースが未確定の場合も中断しない**。`01_data-profile.md` の `## データソース` に `UNRESOLVED` と候補一覧が記録された状態で Step 3 に進む。確定は Step 3 の承認ゲートで行う。
 
 ### Step 3 — 分析要件定義（draft → 承認ゲート → revise 反復）
@@ -141,7 +144,7 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 - **確定データソース**
 - **機密区分**
-- **完了条件（受け入れ基準）**
+- **完了条件（受け入れ基準）** — 分析ループ群（`AC-L-*`）とレポート工程群（`AC-R-*`）の内訳（各群の件数と ID 一覧）を含む
 - **最大試行回数 `N`**（記載がなければ既定 5）
 - **最大再現試行回数 `M`**（記載がなければ既定 3）
 
@@ -151,12 +154,15 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 2. 承認された確定データソースが Step 2 で解決されたソースと異なる。
 
 - **引数**:
+  - `target-project-root`: Step 2 と同一の値
   - `analysis-request`: Step 2 と同一の値
   - `data-dir`: Step 2 と同一の値
-  - `profile-output-path`: Step 2 と同一の値
+  - `manifest-output-path`: Step 2 と同一の値
+  - `profile-output-path`: Step 2 と同一の値（`<workdir>/01_data-profile.md`。同一パスへ上書きさせ、再解決後のプロファイルで置き換える）
   - `run-dir`: Step 2 と同一の値
   - `data-source`: 承認済み要件シートの確定データソースの記述。`data-ingestion-profiler` は `data-source` が渡された起動ではそれを唯一の正として扱うため、`analysis-request` は文脈として渡すに留まる。
-- **期待する戻り値**: `<workdir>/01_data-profile.md` の絶対パス 1 行（`data/manifest.md` も更新される）。
+- Step 2 と 3-4 の引数集合の差分は `data-source` の有無だけである。それ以外の 6 引数は Step 2 と同一の値を渡す。
+- **期待する戻り値**: 上記 `profile-output-path` に渡した絶対パス（`<workdir>/01_data-profile.md`）1 行（`manifest-output-path` の台帳も更新される）。
 
 ### Step 4 — 分析ループ（plan → execute → evaluate、最大 `N` 周）
 
@@ -193,6 +199,8 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 **4-4. ループ制御** — `<workdir>/03_iterations/<n>_evaluation.md` の `## 判定` のみを限定 Read する。
 
+`analysis-evaluator` の `## 判定` は **分析ループ群（`AC-L-*`）のみ** に対する判定である。レポート工程群（`AC-R-*`）は Step 5 のレポート作成で充足する条件であり、`CONTINUE` の理由にならない。
+
 - `SATISFIED` → ループを抜けて Step 5 へ。終了理由は「充足」。
 - `CONTINUE` かつ `n < N` → `n+1` 周へ。
 - `CONTINUE` かつ `n = N` → ループを抜けて Step 5 へ。終了理由は「上限到達」。最終報告でその旨を伝える。
@@ -209,6 +217,7 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
   - `runs-dir`: `<workdir>/runs`
   - `report-output-path`: `<workdir>/04_analysis-report.md`
 - **期待する戻り値**: `<workdir>/04_analysis-report.md` の絶対パス 1 行。
+- `analysis-report-author` は、各周回の評価レポートの `## レポート工程への引き継ぎ事項` に挙がったレポート工程群（`AC-R-*`）の完了条件を本レポートで充足させ、その自己点検結果をレポート末尾に記す。追加の引数は渡さない（`iteration-dir` の中に引き継ぎ事項が含まれる）。
 
 ### Step 6 — 再現実験ループ（最大 `M` 周）
 
@@ -228,7 +237,7 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 
 - `REPRODUCED` → ループを抜けて Step 7 へ。終了理由は「再現一致」。
 - `MISMATCH` かつ `m < M` → 6-3 を実行してから `m+1` 周へ。
-- `MISMATCH` かつ `m = M` → 6-3 を実行し、ループを抜けて Step 7 へ進む。終了理由は「上限到達」。最終報告でその旨を伝える。上限到達の周回でも 6-3 を実行するのは、最終周の検証で判明した差異をレポートに残さないまま清書へ渡さないためであり、6-3 の適用条件（`MISMATCH` 時のみ）を周回の位置によらず適用する解釈を採る。
+- `MISMATCH` かつ `m = M` → 6-3 を実行し、ループを抜けて Step 7 へ進む。終了理由は「上限到達」。最終報告でその旨を伝える。最終周でも 6-3 を実行するのは、その周で判明した差異をレポートに反映してから清書へ渡すためである。
 
 **6-3. レポートへの反映**（`MISMATCH` 時のみ） — `analysis-report-author` を再起動する。
 
@@ -275,10 +284,12 @@ Step 3（分析要件定義）の設計サイクルと承認ゲートの作法�
 | Step 2 でデータソースが `UNRESOLVED` | 中断ではない。そのまま Step 3 へ進み、承認ゲートでユーザーに確定させる。 |
 | Step 2 でデータの取得自体に失敗（接続不可・ファイル不在） | 中断ではない。`data-ingestion-profiler` は所在を特定できても取得に失敗したソースを `01_data-profile.md` の `## データソース` に `UNRESOLVED` として失敗理由付きで記録するため、メインは同セクションの限定 Read で検知する。Step 3 の承認ゲートでその内容を提示し、確定データソースをユーザーに指定させたうえで 3-4 の再解決を行う。 |
 | Step 3 で `analysis-requirements-designer` が対象ファイル不在等を報告 | `requirements-path` の値を確認し、パスが正しければ `mode: "draft"` から再実行する。設計係に Edit を強行させない。 |
-| Step 4-2 で台帳とデータのハッシュが不一致 | 戻り値による中断報告ではない。`analysis-executor` は分析を進めず、不一致の事実（期待値・実測値・対象パス）を `<workdir>/03_iterations/<n>_execution.md` に記録して終了し、同絶対パス 1 行を返す。メインは戻り値からこの事象を判別せず 4-3 へ進む。`analysis-evaluator` が「ハッシュ不一致のまま進めた実行」を要件逸脱として点検して `## 判定` に `CONTINUE` を置くため、ループ制御は 4-4 の規則にそのまま従う。ただし台帳と元データが一致しない限り周回を重ねても充足しないため、上限到達で Step 5 へ進んだ場合の最終報告には、終了理由「上限到達」に加えて最後の `<n>_execution.md` と `<n>_evaluation.md` の絶対パス（不一致の期待値・実測値・対象パスが記録されている）を必ず含め、ユーザーが「元データを元に戻す」「新しいデータで台帳を作り直す（Step 2 から再実行）」を判断できるようにする。 |
+| Step 4-2 で台帳とデータのハッシュが不一致 | 戻り値による中断報告ではない（`## 共通契約への準拠` の「不整合を成果物に記録して終了する経路」に該当する）。4-3 へ進む。ループ制御は 4-4 の規則に従う。上限到達で Step 5 へ進んだ場合は、最終報告に最後の `<n>_execution.md` と `<n>_evaluation.md` の絶対パスを含める。 |
 | Step 4 の任意のサブエージェントがエラーで完走できない | 当該周回を成功として扱わない。同一引数で 1 回だけ再起動し、それでも失敗する場合は該当周回までの成果物のパスと失敗内容をユーザーに報告して終了する。 |
 | Step 5 でレポートを組み立てられない（周回の成果物が欠落） | 欠落しているファイルの絶対パスを提示し、どの Step から再実行するかをユーザーに確認する。 |
 | Step 6 で `M` 周を経ても `MISMATCH` | 中断ではない。Step 7 へ進み、最終報告で「上限到達」と最後の `<m>_verification.md` の絶対パスを伝える。 |
 | Step 7 で HTML 生成に失敗 | `04_analysis-report.md` は完成しているため、その絶対パスを成果として報告したうえで、HTML 清書のみ再実行するか確認する。 |
+
+ハッシュ不一致の行について補足する。`analysis-evaluator` が「ハッシュ不一致のまま進めた実行」を要件逸脱として点検し `## 判定` に `CONTINUE` を置くため、ループ制御を 4-4 の規則にそのまま委ねてよい。ただし台帳と元データが一致しない限り、周回を重ねても完了条件は充足しない。最終報告に実行ログと評価の絶対パスを含めるのは、そこに記録された期待値・実測値・対象パスをもとに、ユーザーが「元データを元に戻す」「新しいデータで台帳を作り直す（Step 2 から再実行）」のどちらを採るかを判断できるようにするためである。
 
 いずれの場合も、途中で作成された成果物は削除しない。再開時は既存の `<workdir>` を再利用し、Step 1 をやり直さない。
