@@ -18,10 +18,10 @@
 
 | Step | 目的 | 委譲先 | 反復 |
 |---|---|---|---|
-| 1 | 日付付き作業ディレクトリの骨格を作る | `analysis-workdir-initializer` | なし |
+| 1 | 日付付き作業ディレクトリと、引数で渡された骨格サブディレクトリを作る | `analysis-workdir-initializer` | なし |
 | 2 | データソースを解決し、台帳とデータプロファイルを作る | `data-ingestion-profiler` | なし（Step 3 承認後に再解決あり） |
 | 3 | 分析要件シート（HTML）を起草し、ユーザー承認を得る | `analysis-requirements-designer` ＋ メインの承認ゲート | 承認まで無制限 |
-| 4 | プラン立案 → 実行 → 評価の分析ループ | `analysis-planner` → `analysis-executor` → `analysis-evaluator` | 最大 N 周（既定 5） |
+| 4 | プラン立案 → 実行 → 評価の分析ループ。評価は分析ループ群（`AC-L-*`）の完了条件だけを判定し、レポート工程群（`AC-R-*`）は Step 5 へ引き渡す | `analysis-planner` → `analysis-executor` → `analysis-evaluator` | 最大 N 周（既定 5） |
 | 5 | 全周回を統合した再現可能レポート（Markdown）を書く | `analysis-report-author` | なし |
 | 6 | レポートだけを情報源に追試し、不一致ならレポートへ反映する | `reproduction-verifier`（→ 不一致時 `analysis-report-author`） | 最大 M 周（既定 3） |
 | 7 | 単一ファイル HTML に清書する | `analysis-report-stylist` | なし |
@@ -30,13 +30,13 @@
 
 | 名前 | 責務（1 行） | 粒度 | 使用する How スキル |
 |---|---|---|---|
-| `analysis-workdir-initializer` | `tasks/<日付>_<名前>/` と固定サブディレクトリ骨格を作り絶対パスを返す | 1 体 | なし |
-| `data-ingestion-profiler` | データソースを解決し、`data/manifest.md` の台帳とプロファイルレポートを作る | 1 体 | `analysis-data-handling` `analysis-run-recording` |
+| `analysis-workdir-initializer` | `tasks/<日付>_<名前>/` と、引数で渡された骨格サブディレクトリを作り絶対パスを返す。骨格の名前を自分では持たない | 1 体 | なし |
+| `data-ingestion-profiler` | データソースを解決し、引数で渡された出力先に台帳とプロファイルレポートを作る。依頼文中の相対パスは `target-project-root` を基点に解決する | 1 体 | `analysis-data-handling` `analysis-run-recording` |
 | `analysis-requirements-designer` | draft / revise の 2 モードで分析要件シート（HTML）を作る設計係 | 1 体 | `analysis-design-cycle` `html-deliverable-design` `analysis-data-handling` |
 | `analysis-planner` | 要件と前周のフィードバックから当該周回の分析プランを書く | 1 インスタンス = 1 周回 | なし |
 | `analysis-executor` | 台帳とデータのハッシュを照合してからプランを実行し、実行資産を再実行可能な形で保存する | 1 インスタンス = 1 周回 | `analysis-run-recording` `analysis-data-handling` |
-| `analysis-evaluator` | 実行結果の要件充足を判定し、要件逸脱を点検し、次周へのフィードバックを書く | 1 インスタンス = 1 周回 | なし |
-| `analysis-report-author` | 全周回の記録を統合して再現可能レポートを書く。再現検証レポートを渡されると既存レポートへ反映する | 1 体 | `analysis-run-recording` `analysis-data-handling` |
+| `analysis-evaluator` | 分析ループ群（`AC-L-*`）の充足を判定し、要件逸脱を点検し、レポート工程群（`AC-R-*`）を固定見出しでレポート工程へ引き渡し、次周へのフィードバックを書く | 1 インスタンス = 1 周回 | なし |
+| `analysis-report-author` | 全周回の記録を統合して再現可能レポートを書き、レポート工程群（`AC-R-*`）の充足を自己点検して記載する。再現検証レポートを渡されると既存レポートへ反映する | 1 体 | `analysis-run-recording` `analysis-data-handling` |
 | `reproduction-verifier` | レポートのみを情報源に追試し、同じ結果が得られるかを検証する第三者役 | 1 インスタンス = 1 周回 | `analysis-run-recording` `analysis-data-handling` |
 | `analysis-report-stylist` | Markdown レポートを単一ファイル HTML に清書する | 1 体 | `html-deliverable-design` `analysis-data-handling` |
 
@@ -47,7 +47,7 @@
 | 名前 | 要旨 | 利用するサブエージェント |
 |---|---|---|
 | `analysis-data-handling` | データソースの解決、台帳の記録項目、取り込み方式（参照／コピー／スナップショット）、SHA-256 による同一性検証、機密区分ごとの保存・掲載可否、認証情報の扱い | 5 体（profiler / executor / report-author / stylist / verifier） |
-| `analysis-run-recording` | `run-dir` 配下の構成、必ずファイルに保存してから実行する原則、`run.sh` と `environment.md` の要件、派生データ、失敗の記録 | 書き手 3 体（profiler / executor / verifier）、読み手 1 体（report-author） |
+| `analysis-run-recording` | `run-dir` 配下の構成、必ずファイルに保存してから実行する原則、`run.sh` と `environment.md` の要件、派生データ、失敗の記録、確定済み `run-dir` の不変性、スクリプトのパラメータ化（周回番号・`run-dir` パスをハードコードしない） | 書き手 3 体（profiler / executor / verifier）、読み手 1 体（report-author） |
 | `analysis-design-cycle` | draft → 要約セクションの限定 Read → 承認ゲート → revise の設計サイクル契約。設計係とメインの 2 役を規定 | `analysis-requirements-designer`（設計係）、メイン（オーケストレーター） |
 | `html-deliverable-design` | 単一ファイル HTML の情報設計・タイポグラフィ・配色・表と図表の提示規約・アクセシビリティ下限。テンプレートは提供しない | `analysis-requirements-designer`、`analysis-report-stylist` |
 
@@ -90,7 +90,7 @@
 
 - **限定 Read**: メインは各生成物の固定見出し（評価と検証の `## 判定`、要件シートの `<section id="design-summary">` など）だけを読み、本文は読まない。
 - **絶対パスの引き回し**: 中間生成物のパスはメインが組み立て、サブエージェントに絶対パスで渡す。サブエージェントは命名規約を推測しない。
-- **戻り値 1 行**: サブエージェントは成果物の絶対パス 1 行だけを返す。入力の不整合を検出したときは成果物を書かず、パスを返さずに報告して終わる。
+- **戻り値 1 行**: サブエージェントは成果物の絶対パス 1 行だけを返し、要約・説明・英語の補足を付けない。入力の不整合を検出したときは成果物を書かず、パスを返さずに報告して終わる。
 
 契約の全文は SKILL.md の `## 共通契約への準拠` と `## 限定 Read 契約（固定見出しテーブル）`、設計サイクル部分は `.claude/skills/analysis-design-cycle/SKILL.md` を参照。
 

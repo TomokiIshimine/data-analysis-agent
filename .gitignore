@@ -4,5 +4,11 @@
 # Workflow working directories (ephemeral; may contain copies of analysis data)
 tasks/
 
+# Fetched sample data (re-fetch with datasets/<name>/fetch.sh)
+datasets/*/raw/
+
+# Python virtual environment for running analysis code
+.venv/
+
 # OS / editor
 .DS_Store
